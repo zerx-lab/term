@@ -85,7 +85,7 @@ crates/zed/build.rs                          Windows 构建标识（已改名为
 3. **dock `set_active` 自动建终端**：已移除，dock panel 打开时不再自动 spawn terminal。
 4. **panel tab bar "+" 使用 `NewTerminal`**：改为 `NewCenterTerminal`，行为明确。
 5. **右键菜单 "New Terminal" 静默失效**：改为 `NewCenterTerminal`，直接走 center 路径。
-6. **关闭最后一个 center item 后 pane 为空**（#7）：在 `workspace.rs` `handle_pane_event` 的 `RemovedItem` 分支里，当 `!self.removing && pane.items_len() == 0` 时自动 dispatch `NewCenterTerminal`，保证 center pane 永不为空。
+6. ~~**关闭最后一个 center item 后 pane 为空**（#7）：在 `workspace.rs` `handle_pane_event` 的 `RemovedItem` 分支里自动 dispatch `NewCenterTerminal`~~ **已撤销**：该行为导致关闭最后一个终端后无法关闭窗口，已从 `RemovedItem` 分支中移除。
 7. **"About Zed" 窗口标题**（#10）：`zed.rs` `open_about_window` 中 `TitlebarOptions::title` 已从 `"About Zed"` 改为 `"About Zterm"`。
 8. **project panel 在 terminal-first 布局下默认折叠**（#11）：`zed.rs` `initialize_panels` 中，启动时若 center pane 为空（无文件），在 dispatch `NewCenterTerminal` 前先调用 `workspace.close_panel::<ProjectPanel>()`。
 
@@ -103,5 +103,6 @@ crates/zed/build.rs                          Windows 构建标识（已改名为
 
 - **不要**在 `main.rs` 的 `open_new` 回调里再次 dispatch `NewCenterTerminal`，启动终端的唯一触发点是 `zed.rs` 的 `initialize_panels`。
 - **不要**在 `TerminalPanel::set_active` 里自动 spawn terminal——dock panel 的生命周期由用户控制。
+- **不要**在 `workspace.rs` 的 `RemovedItem` 事件分支里自动 dispatch `NewCenterTerminal`——这会导致关闭最后一个终端后无法关闭窗口。
 - 新的终端相关 action handler 统一走 `TerminalPanel::add_center_terminal`，不要再引入 panel dock 路由逻辑。
 - 构建/lint 用 `./script/clippy`，不要直接用 `cargo clippy`。
