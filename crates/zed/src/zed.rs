@@ -676,8 +676,20 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
             add_panel_when_ready(git_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(channels_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(debug_panel, workspace_handle.clone(), cx.clone()),
-            initialize_agent_panel(workspace_handle, cx.clone()).map(|r| r.log_err()),
+            initialize_agent_panel(workspace_handle.clone(), cx.clone()).map(|r| r.log_err()),
         );
+
+        // zterm: open a terminal in the center pane on startup when no files are open
+        workspace_handle
+            .update_in(cx, |workspace, window, cx| {
+                if workspace.active_pane().read(cx).items_len() == 0 {
+                    window.dispatch_action(
+                        Box::new(workspace::NewCenterTerminal::default()),
+                        cx,
+                    );
+                }
+            })
+            .log_err();
 
         anyhow::Ok(())
     })
