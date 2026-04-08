@@ -15,7 +15,6 @@ use collab_ui::channel_view::ChannelView;
 use collections::HashMap;
 use crashes::InitCrashHandler;
 use db::kvp::{GlobalKeyValueStore, KeyValueStore};
-use editor::Editor;
 use extension::ExtensionHostProxy;
 use fs::{Fs, RealFs};
 use futures::{StreamExt, channel::oneshot, future};
@@ -56,8 +55,9 @@ use theme_settings::load_user_theme;
 use util::{ResultExt, TryFutureExt, maybe};
 use uuid::Uuid;
 use workspace::{
-    AppState, MultiWorkspace, SerializedWorkspaceLocation, SessionWorkspace, Toast,
-    WorkspaceSettings, WorkspaceStore, notifications::NotificationId, restore_multiworkspace,
+    AppState, MultiWorkspace, NewCenterTerminal, SerializedWorkspaceLocation, SessionWorkspace,
+    Toast, WorkspaceSettings, WorkspaceStore, notifications::NotificationId,
+    restore_multiworkspace,
 };
 use zed::{
     OpenListener, OpenRequest, RawOpenRequest, app_menus, build_window_options,
@@ -1467,12 +1467,16 @@ pub(crate) async fn restore_or_create_workspace(
                 Default::default(),
                 app_state,
                 cx,
-                |workspace, window, cx| {
+                |_workspace, window, cx| {
                     let restore_on_startup = WorkspaceSettings::get_global(cx).restore_on_startup;
                     match restore_on_startup {
                         workspace::RestoreOnStartupBehavior::Launchpad => {}
                         _ => {
-                            Editor::new_file(workspace, &Default::default(), window, cx);
+                            // zterm: open a terminal instead of an untitled editor
+                            window.dispatch_action(
+                                Box::new(NewCenterTerminal::default()),
+                                cx,
+                            );
                         }
                     }
                 },
