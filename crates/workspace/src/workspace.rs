@@ -5253,6 +5253,12 @@ impl Workspace {
                 cx.emit(Event::ItemRemoved {
                     item_id: item.item_id(),
                 });
+                // zterm: when the last item in a center pane is closed, automatically open a
+                // new terminal so the center is never left empty. Skip this during workspace
+                // teardown to avoid spuriously reopening terminals on quit.
+                if !self.removing && pane.read(cx).items_len() == 0 {
+                    window.dispatch_action(Box::new(NewCenterTerminal::default()), cx);
+                }
             }
             pane::Event::Focus => {
                 window.invalidate_character_coordinates();

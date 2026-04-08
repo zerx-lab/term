@@ -85,6 +85,9 @@ crates/zed/build.rs                          Windows 构建标识（已改名为
 3. **dock `set_active` 自动建终端**：已移除，dock panel 打开时不再自动 spawn terminal。
 4. **panel tab bar "+" 使用 `NewTerminal`**：改为 `NewCenterTerminal`，行为明确。
 5. **右键菜单 "New Terminal" 静默失效**：改为 `NewCenterTerminal`，直接走 center 路径。
+6. **关闭最后一个 center item 后 pane 为空**（#7）：在 `workspace.rs` `handle_pane_event` 的 `RemovedItem` 分支里，当 `!self.removing && pane.items_len() == 0` 时自动 dispatch `NewCenterTerminal`，保证 center pane 永不为空。
+7. **"About Zed" 窗口标题**（#10）：`zed.rs` `open_about_window` 中 `TitlebarOptions::title` 已从 `"About Zed"` 改为 `"About Zterm"`。
+8. **project panel 在 terminal-first 布局下默认折叠**（#11）：`zed.rs` `initialize_panels` 中，启动时若 center pane 为空（无文件），在 dispatch `NewCenterTerminal` 前先调用 `workspace.close_panel::<ProjectPanel>()`。
 
 ---
 
@@ -92,10 +95,7 @@ crates/zed/build.rs                          Windows 构建标识（已改名为
 
 | # | 问题 | 位置 |
 |---|------|------|
-| 7 | 关闭最后一个 center terminal 后 pane 为空，不自动补开 | `workspace.rs` `handle_pane_event` `RemovedItem` 分支 |
-| 8 | center terminal 序列化恢复需验证 | `terminal_view.rs` `deserialize` |
-| 10 | "About Zed" 窗口标题仍写 "About Zed" 未改为 "About Zterm" | `zed.rs` `open_about_window` |
-| 11 | project panel 在 terminal-first 布局下可考虑默认折叠 | `zed.rs` `initialize_panels` |
+| 8 | center terminal 序列化恢复需验证（代码已有实现，缺集成测试） | `terminal_view.rs` `deserialize` |
 
 ---
 

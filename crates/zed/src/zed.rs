@@ -679,10 +679,12 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
             initialize_agent_panel(workspace_handle.clone(), cx.clone()).map(|r| r.log_err()),
         );
 
-        // zterm: open a terminal in the center pane on startup when no files are open
+        // zterm: open a terminal in the center pane on startup when no files are open,
+        // and collapse the project panel so the terminal gets full focus
         workspace_handle
             .update_in(cx, |workspace, window, cx| {
                 if workspace.active_pane().read(cx).items_len() == 0 {
+                    workspace.close_panel::<ProjectPanel>(window, cx);
                     window.dispatch_action(
                         Box::new(workspace::NewCenterTerminal::default()),
                         cx,
@@ -1440,7 +1442,7 @@ fn open_about_window(cx: &mut App) {
     cx.open_window(
         WindowOptions {
             titlebar: Some(TitlebarOptions {
-                title: Some("About Zed".into()),
+                title: Some("About Zterm".into()),
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(12.), px(12.))),
             }),
