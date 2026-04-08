@@ -55,9 +55,8 @@ use theme_settings::load_user_theme;
 use util::{ResultExt, TryFutureExt, maybe};
 use uuid::Uuid;
 use workspace::{
-    AppState, MultiWorkspace, NewCenterTerminal, SerializedWorkspaceLocation, SessionWorkspace,
-    Toast, WorkspaceSettings, WorkspaceStore, notifications::NotificationId,
-    restore_multiworkspace,
+    AppState, MultiWorkspace, SerializedWorkspaceLocation, SessionWorkspace, Toast,
+    WorkspaceSettings, WorkspaceStore, notifications::NotificationId, restore_multiworkspace,
 };
 use zed::{
     OpenListener, OpenRequest, RawOpenRequest, app_menus, build_window_options,
@@ -1462,27 +1461,8 @@ pub(crate) async fn restore_or_create_workspace(
     } else if matches!(kvp.read_kvp(FIRST_OPEN), Ok(None)) {
         cx.update(|cx| show_onboarding_view(app_state, cx)).await?;
     } else {
-        cx.update(|cx| {
-            workspace::open_new(
-                Default::default(),
-                app_state,
-                cx,
-                |_workspace, window, cx| {
-                    let restore_on_startup = WorkspaceSettings::get_global(cx).restore_on_startup;
-                    match restore_on_startup {
-                        workspace::RestoreOnStartupBehavior::Launchpad => {}
-                        _ => {
-                            // zterm: open a terminal instead of an untitled editor
-                            window.dispatch_action(
-                                Box::new(NewCenterTerminal::default()),
-                                cx,
-                            );
-                        }
-                    }
-                },
-            )
-        })
-        .await?;
+        cx.update(|cx| workspace::open_new(Default::default(), app_state, cx, |_, _, _| {}))
+            .await?;
     }
 
     Ok(())

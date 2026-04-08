@@ -168,7 +168,7 @@ impl TerminalPanel {
                                     menu.context(focus_handle.clone())
                                         .action(
                                             "New Terminal",
-                                            workspace::NewTerminal::default().boxed_clone(),
+                                            workspace::NewCenterTerminal::default().boxed_clone(),
                                         )
                                         // We want the focus to go back to terminal panel once task modal is dismissed,
                                         // hence we focus that first. Otherwise, we'd end up without a focused element, as
@@ -1575,23 +1575,9 @@ impl Panel for TerminalPanel {
         cx.notify();
     }
 
-    fn set_active(&mut self, active: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let old_active = self.active;
+    fn set_active(&mut self, active: bool, _window: &mut Window, cx: &mut Context<Self>) {
         self.active = active;
-        if !active || old_active == active || !self.has_no_terminals(cx) {
-            return;
-        }
-        cx.defer_in(window, |this, window, cx| {
-            let Ok(kind) = this
-                .workspace
-                .update(cx, |workspace, cx| default_working_directory(workspace, cx))
-            else {
-                return;
-            };
-
-            this.add_terminal_shell(kind, RevealStrategy::Always, window, cx)
-                .detach_and_log_err(cx)
-        })
+        cx.notify();
     }
 
     fn icon_label(&self, _window: &Window, cx: &App) -> Option<String> {
@@ -1914,7 +1900,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_new_terminal_opens_in_panel_by_default(cx: &mut TestAppContext) {
+    async fn test_new_terminal_always_opens_in_center(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         init_test(cx);
 
@@ -1962,20 +1948,18 @@ mod tests {
             .expect("Failed to read center pane items");
 
         assert_eq!(
-            panel_items_after,
-            panel_items_before + 1,
-            "Terminal should be added to the panel when no center terminal is focused"
+            center_items_after,
+            center_items_before + 1,
+            "NewTerminal should always open in the center pane"
         );
         assert_eq!(
-            center_items_after, center_items_before,
-            "Center pane should not gain a new terminal"
+            panel_items_after, panel_items_before,
+            "Terminal panel should not gain a new terminal"
         );
     }
 
     #[gpui::test]
-    async fn test_new_terminal_opens_in_center_when_center_terminal_focused(
-        cx: &mut TestAppContext,
-    ) {
+    async fn test_new_terminal_adds_to_center_when_center_has_terminals(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         init_test(cx);
 
@@ -2005,23 +1989,6 @@ mod tests {
             })
             .expect("Failed to read center pane items");
         assert_eq!(center_items_before, 1, "Center pane should have 1 terminal");
-
-        window_handle
-            .update(cx, |multi_workspace, window, cx| {
-                multi_workspace.workspace().update(cx, |workspace, cx| {
-                    let active_item = workspace
-                        .active_pane()
-                        .read(cx)
-                        .active_item()
-                        .expect("Center pane should have an active item");
-                    let terminal_view = active_item
-                        .downcast::<TerminalView>()
-                        .expect("Active center item should be a TerminalView");
-                    window.focus(&terminal_view.focus_handle(cx), cx);
-                })
-            })
-            .expect("Failed to focus terminal view");
-        cx.run_until_parked();
 
         let panel_items_before =
             terminal_panel.read_with(cx, |panel, cx| panel.active_pane.read(cx).items_len());
@@ -2056,7 +2023,7 @@ mod tests {
         assert_eq!(
             center_items_after,
             center_items_before + 1,
-            "New terminal should be added to the center pane"
+            "NewTerminal should add another terminal to the center pane"
         );
         assert_eq!(
             panel_items_after, panel_items_before,
@@ -2065,7 +2032,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_new_terminal_opens_in_panel_when_panel_focused(cx: &mut TestAppContext) {
+    async fn test_new_terminal_opens_in_center_even_when_panel_is_focused(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         init_test(cx);
 
@@ -2091,7 +2058,6 @@ mod tests {
 
         let panel_items_before =
             terminal_panel.read_with(cx, |panel, cx| panel.active_pane.read(cx).items_len());
-
         let center_items_before = window_handle
             .read_with(cx, |multi_workspace, cx| {
                 multi_workspace
@@ -2131,54 +2097,22 @@ mod tests {
             .expect("Failed to read center pane items");
 
         assert_eq!(
-            panel_items_after,
-            panel_items_before + 1,
-            "New terminal should be added to the panel when panel is focused"
+            center_items_after,
+            center_items_before + 1,
+            "NewTerminal should open in the center pane even when the terminal panel is focused"
         );
         assert_eq!(
-            center_items_after, center_items_before,
-            "Center pane should not gain a new terminal"
+            panel_items_after, panel_items_before,
+            "Terminal panel should not gain a new terminal"
         );
     }
 
     #[gpui::test]
-    async fn test_new_local_terminal_opens_in_center_when_center_terminal_focused(
-        cx: &mut TestAppContext,
-    ) {
+    async fn test_new_local_terminal_opens_in_center(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         init_test(cx);
 
         let (window_handle, terminal_panel) = init_workspace_with_panel(cx).await;
-
-        window_handle
-            .update(cx, |multi_workspace, window, cx| {
-                multi_workspace.workspace().update(cx, |workspace, cx| {
-                    TerminalPanel::add_center_terminal(workspace, window, cx, |project, cx| {
-                        project.create_terminal_shell(None, cx)
-                    })
-                })
-            })
-            .expect("Failed to update workspace")
-            .await
-            .expect("Failed to create center terminal");
-        cx.run_until_parked();
-
-        window_handle
-            .update(cx, |multi_workspace, window, cx| {
-                multi_workspace.workspace().update(cx, |workspace, cx| {
-                    let active_item = workspace
-                        .active_pane()
-                        .read(cx)
-                        .active_item()
-                        .expect("Center pane should have an active item");
-                    let terminal_view = active_item
-                        .downcast::<TerminalView>()
-                        .expect("Active center item should be a TerminalView");
-                    window.focus(&terminal_view.focus_handle(cx), cx);
-                })
-            })
-            .expect("Failed to focus terminal view");
-        cx.run_until_parked();
 
         let center_items_before = window_handle
             .read_with(cx, |multi_workspace, cx| {
@@ -2223,7 +2157,7 @@ mod tests {
         assert_eq!(
             center_items_after,
             center_items_before + 1,
-            "New local terminal should be added to the center pane"
+            "NewTerminal {{ local: true }} should always open in the center pane"
         );
         assert_eq!(
             panel_items_after, panel_items_before,
@@ -2232,7 +2166,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_new_terminal_opens_in_panel_when_panel_focused_and_center_has_terminal(
+    async fn test_new_terminal_always_goes_to_center_regardless_of_context(
         cx: &mut TestAppContext,
     ) {
         cx.executor().allow_parking();
@@ -2312,13 +2246,13 @@ mod tests {
             .expect("Failed to read center pane items");
 
         assert_eq!(
-            panel_items_after,
-            panel_items_before + 1,
-            "New terminal should go to panel when panel is focused, even if center has a terminal"
+            center_items_after,
+            center_items_before + 1,
+            "NewTerminal should always go to the center pane, even when panel is focused and both panel and center already have terminals"
         );
         assert_eq!(
-            center_items_after, center_items_before,
-            "Center pane should not gain a new terminal when panel is focused"
+            panel_items_after, panel_items_before,
+            "Terminal panel should not gain a new terminal"
         );
     }
 
