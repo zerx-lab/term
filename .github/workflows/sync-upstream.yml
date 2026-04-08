@@ -1,0 +1,28 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 每天 UTC 02:00 自动同步
+  workflow_dispatch:       # 允许手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync upstream main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/zed-industries/zed.git
+          git fetch upstream main
+          git merge upstream/main --ff-only
+          git push origin main
