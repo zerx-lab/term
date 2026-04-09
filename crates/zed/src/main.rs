@@ -382,7 +382,7 @@ fn main() {
         }
     };
     if failed_single_instance_check {
-        println!("zed is already running");
+        println!("zterm is already running");
         return;
     }
 

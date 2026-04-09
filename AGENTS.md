@@ -44,9 +44,11 @@ Windows app identifier、bundle ID 也均改为 `Zterm-Editor-*`。
 
 ### 3. Dock panel 行为调整
 
-- **`TerminalPanel::set_active` 不再自动建终端**：原来打开 dock terminal panel 时若为空会自动 spawn 一个终端，现已移除该行为，dock panel 完全由用户手动控制。
 - **panel tab bar 的 "+" 按钮**：改为 dispatch `NewCenterTerminal`，行为与 zterm 理念一致（在 center 打开）。
 - **右键菜单 "New Terminal"**：改为 dispatch `NewCenterTerminal`，避免原来因焦点条件不满足而静默失效的问题。
+
+- **右键 "Open in Terminal"**：`TerminalPanel::open_terminal` 从 dock 路由改为走 `add_center_terminal`，所有上下文菜单（project panel、outline panel、editor、pane tab）的 "Open in Terminal" 现在都在 center pane 打开终端。
+- **vim `:term` 命令**：从 dispatch `terminal_panel::Toggle` 改为 dispatch `workspace::NewCenterTerminal`。
 
 ---
 
@@ -56,8 +58,9 @@ Windows app identifier、bundle ID 也均改为 `Zterm-Editor-*`。
 |--------|----------|------|
 | `NewCenterTerminal` | `workspace` | 在 center pane 打开新终端（zterm 主要入口） |
 | `NewTerminal` | `workspace` | 同 `NewCenterTerminal`，handler 已改为始终走 center |
-| `ToggleFocus` | `terminal_panel` | 切换 dock terminal panel 焦点 |
-| `Toggle` | `terminal_panel` | 打开/关闭 dock terminal panel |
+| `OpenTerminal` | `workspace` | 携带 `working_directory` 的 action，已改为走 center（右键菜单 "Open in Terminal"） |
+| `ToggleFocus` | `terminal_panel` | 切换 dock terminal panel 焦点（app 菜单保留） |
+| `Toggle` | `terminal_panel` | 打开/关闭 dock terminal panel（不再有默认快捷键绑定） |
 
 `TerminalView::deploy` 处理 `NewCenterTerminal`，调用 `TerminalPanel::add_center_terminal`。
 
@@ -89,6 +92,10 @@ crates/zed/build.rs                          Windows 构建标识（已改名为
 7. **"About Zed" 窗口标题**（#10）：`zed.rs` `open_about_window` 中 `TitlebarOptions::title` 已从 `"About Zed"` 改为 `"About Zterm"`。
 8. **project panel 在 terminal-first 布局下默认折叠**（#11）：`zed.rs` `initialize_panels` 中，启动时若 center pane 为空（无文件），在 dispatch `NewCenterTerminal` 前先调用 `workspace.close_panel::<ProjectPanel>()`。
 
+9. **右键 "Open in Terminal" 打开 dock 而非 center**（#13）：`TerminalPanel::open_terminal` 从 `panel.add_terminal_shell()` 改为 `Self::add_center_terminal()`，终端在 center pane 打开。
+10. **vim `:term` 打开 dock 而非 center**（#14）：`:term`/`:Term` 从 dispatch `terminal_panel::Toggle` 改为 `workspace::NewCenterTerminal`。
+11. **dock terminal panel 从序列化状态恢复后仍然可见**（#15）：`initialize_panels` 中在所有面板加载完毕后无条件调用 `workspace.close_panel::<TerminalPanel>()`，确保 dock terminal panel 启动时始终关闭。之前 dock 会从上次 session 的序列化状态恢复为打开，导致底部出现一个空的终端区域。
+
 ---
 
 ## 待处理的问题
@@ -102,7 +109,9 @@ crates/zed/build.rs                          Windows 构建标识（已改名为
 ## 开发注意事项
 
 - **不要**在 `main.rs` 的 `open_new` 回调里再次 dispatch `NewCenterTerminal`，启动终端的唯一触发点是 `zed.rs` 的 `initialize_panels`。
-- **不要**在 `TerminalPanel::set_active` 里自动 spawn terminal——dock panel 的生命周期由用户控制。
+- `TerminalPanel::set_active` 里的自动 spawn terminal 逻辑**必须保留**——这是 dock panel 首次打开时自动创建终端的入口（上游原版行为）。
 - **不要**在 `workspace.rs` 的 `RemovedItem` 事件分支里自动 dispatch `NewCenterTerminal`——这会导致关闭最后一个终端后无法关闭窗口。
 - 新的终端相关 action handler 统一走 `TerminalPanel::add_center_terminal`，不要再引入 panel dock 路由逻辑。
+- **不要**把默认快捷键绑定到 `terminal_panel::Toggle`——`Toggle` 仍可用但没有默认快捷键，用户可自行绑定。
+- dock terminal panel 在 `initialize_panels` 中始终被关闭（`close_panel::<TerminalPanel>`），不要移除该逻辑，否则序列化恢复会导致底部出现空的 dock 终端区域。
 - 构建/lint 用 `./script/clippy`，不要直接用 `cargo clippy`。

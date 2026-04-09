@@ -679,10 +679,12 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
             initialize_agent_panel(workspace_handle.clone(), cx.clone()).map(|r| r.log_err()),
         );
 
-        // zterm: open a terminal in the center pane on startup when no files are open,
-        // and collapse the project panel so the terminal gets full focus
+        // zterm: dock terminal panel should always be closed — terminals live in center pane.
+        // Also open a terminal in the center pane on startup when no files are open,
+        // and collapse the project panel so the terminal gets full focus.
         workspace_handle
             .update_in(cx, |workspace, window, cx| {
+                workspace.close_panel::<TerminalPanel>(window, cx);
                 if workspace.active_pane().read(cx).items_len() == 0 {
                     workspace.close_panel::<ProjectPanel>(window, cx);
                     window.dispatch_action(

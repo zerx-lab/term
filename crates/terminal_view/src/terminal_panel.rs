@@ -56,6 +56,7 @@ pub fn init(cx: &mut App) {
     cx.observe_new(
         |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
             workspace.register_action(TerminalPanel::new_terminal);
+            workspace.register_action(TerminalPanel::new_center_terminal);
             workspace.register_action(TerminalPanel::open_terminal);
             workspace.register_action(|workspace, _: &ToggleFocus, window, cx| {
                 if is_enabled_in_workspace(workspace, cx) {
@@ -644,6 +645,27 @@ impl TerminalPanel {
                 .unwrap_or_else(|e| Task::ready(Err(e))),
             RevealTarget::Dock => self.add_terminal_task(spawn_task, reveal, window, cx),
         }
+    }
+
+    fn new_center_terminal(
+        workspace: &mut Workspace,
+        action: &workspace::NewCenterTerminal,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        if !is_enabled_in_workspace(workspace, cx) {
+            return;
+        }
+        let working_directory = default_working_directory(workspace, cx);
+        let local = action.local;
+        Self::add_center_terminal(workspace, window, cx, move |project, cx| {
+            if local {
+                project.create_local_terminal(cx)
+            } else {
+                project.create_terminal_shell(working_directory, cx)
+            }
+        })
+        .detach_and_log_err(cx);
     }
 
     /// Create a new Terminal in the center pane (zterm: terminal-first layout)
@@ -1575,9 +1597,23 @@ impl Panel for TerminalPanel {
         cx.notify();
     }
 
-    fn set_active(&mut self, active: bool, _window: &mut Window, cx: &mut Context<Self>) {
+    fn set_active(&mut self, active: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let old_active = self.active;
         self.active = active;
-        cx.notify();
+        if !active || old_active == active || !self.has_no_terminals(cx) {
+            return;
+        }
+        cx.defer_in(window, |this, window, cx| {
+            let Ok(kind) = this
+                .workspace
+                .update(cx, |workspace, cx| default_working_directory(workspace, cx))
+            else {
+                return;
+            };
+
+            this.add_terminal_shell(kind, RevealStrategy::Always, window, cx)
+                .detach_and_log_err(cx)
+        })
     }
 
     fn icon_label(&self, _window: &Window, cx: &App) -> Option<String> {
