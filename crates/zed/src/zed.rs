@@ -76,7 +76,10 @@ use std::{
     sync::Arc,
     sync::atomic::{self, AtomicBool},
 };
-use terminal_view::terminal_panel::{self, TerminalPanel};
+use terminal_view::{
+    TerminalView, default_working_directory,
+    terminal_panel::{self, TerminalPanel},
+};
 use theme::{ActiveTheme, SystemAppearance, ThemeRegistry, deserialize_icon_theme};
 use theme_settings::{ThemeSettings, load_user_theme};
 use ui::{Navigable, NavigableEntry, PopoverMenuHandle, TintColor, prelude::*};
@@ -685,12 +688,24 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
         workspace_handle
             .update_in(cx, |workspace, window, cx| {
                 workspace.close_panel::<TerminalPanel>(window, cx);
-                if workspace.active_pane().read(cx).items_len() == 0 {
-                    workspace.close_panel::<ProjectPanel>(window, cx);
-                    window.dispatch_action(
-                        Box::new(workspace::NewCenterTerminal::default()),
-                        cx,
-                    );
+                let active_pane = workspace.active_pane().clone();
+                let (has_terminal_item, pane_is_empty) = {
+                    let pane = active_pane.read(cx);
+                    let has_terminal = pane
+                        .items()
+                        .any(|item| item.downcast::<TerminalView>().is_some());
+                    let is_empty = pane.items_len() == 0;
+                    (has_terminal, is_empty)
+                };
+                if !has_terminal_item {
+                    if pane_is_empty {
+                        workspace.close_panel::<ProjectPanel>(window, cx);
+                    }
+                    let working_directory = default_working_directory(workspace, cx);
+                    TerminalPanel::add_center_terminal(workspace, window, cx, move |project, cx| {
+                        project.create_terminal_shell(working_directory, cx)
+                    })
+                    .detach_and_log_err(cx);
                 }
             })
             .log_err();

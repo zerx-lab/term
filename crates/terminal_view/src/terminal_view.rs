@@ -52,8 +52,8 @@ use ui::{
 };
 use util::ResultExt;
 use workspace::{
-    CloseActiveItem, DraggedSelection, DraggedTab, NewCenterTerminal, Pane,
-    ToolbarItemLocation, Workspace, WorkspaceId, delete_unloaded_items,
+    CloseActiveItem, DraggedSelection, DraggedTab, NewCenterTerminal, Pane, ToolbarItemLocation,
+    Workspace, WorkspaceId, delete_unloaded_items,
     item::{
         HighlightedText, Item, ItemEvent, SerializableItem, TabContentParams, TabTooltipContent,
     },
@@ -1966,7 +1966,7 @@ impl SearchableItem for TerminalView {
 
 /// Gets the working directory for the given workspace, respecting the user's settings.
 /// Falls back to home directory when no project directory is available.
-pub(crate) fn default_working_directory(workspace: &Workspace, cx: &App) -> Option<PathBuf> {
+pub fn default_working_directory(workspace: &Workspace, cx: &App) -> Option<PathBuf> {
     let directory = match &TerminalSettings::get_global(cx).working_directory {
         WorkingDirectory::CurrentFileDirectory => workspace
             .project()
