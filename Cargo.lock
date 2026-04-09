@@ -275,6 +275,7 @@ dependencies = [
  "nix 0.29.0",
  "project",
  "release_channel",
+ "remote",
  "reqwest_client",
  "serde",
  "serde_json",
@@ -5175,6 +5176,7 @@ dependencies = [
  "copilot",
  "copilot_ui",
  "credentials_provider",
+ "criterion",
  "ctor",
  "db",
  "edit_prediction_context",
@@ -5188,9 +5190,11 @@ dependencies = [
  "itertools 0.14.0",
  "language",
  "language_model",
+ "languages",
  "log",
  "lsp",
  "menu",
+ "node_runtime",
  "open_ai",
  "parking_lot",
  "postage",
@@ -5234,7 +5238,6 @@ dependencies = [
  "client",
  "cloud_llm_client",
  "collections",
- "criterion",
  "db",
  "debug_adapter_extension",
  "dirs 4.0.0",
@@ -16082,6 +16085,7 @@ dependencies = [
  "git",
  "gpui",
  "language_model",
+ "log",
  "menu",
  "platform_title_bar",
  "pretty_assertions",
@@ -16092,6 +16096,7 @@ dependencies = [
  "serde",
  "serde_json",
  "settings",
+ "smol",
  "theme",
  "theme_settings",
  "ui",
@@ -22138,7 +22143,7 @@ dependencies = [
 
 [[package]]
 name = "zed"
-version = "0.232.0"
+version = "0.233.0"
 dependencies = [
  "acp_thread",
  "acp_tools",
