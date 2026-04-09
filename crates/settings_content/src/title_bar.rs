@@ -109,6 +109,10 @@ pub struct TitleBarSettingsContent {
     ///
     /// Default: true
     pub show_user_menu: Option<bool>,
+    /// Whether to show the application menu button (hamburger icon) in the title bar.
+    ///
+    /// Default: true
+    pub show_application_menu: Option<bool>,
     /// Whether to show the menus in the title bar.
     ///
     /// Default: false

@@ -180,6 +180,7 @@ impl Render for TitleBar {
         let button_layout = title_bar_settings.button_layout;
 
         let show_menus = show_menus(cx);
+        let show_application_menu = title_bar_settings.show_application_menu;
 
         let mut children = Vec::new();
 
@@ -212,7 +213,7 @@ impl Render for TitleBar {
                         || title_bar_settings.show_project_items;
                     title_bar
                         .when_some(
-                            self.application_menu.clone().filter(|_| !show_menus),
+                            self.application_menu.clone().filter(|_| !show_menus && show_application_menu),
                             |title_bar, menu| {
                                 render_project_items &=
                                     !menu.update(cx, |menu, cx| menu.all_menus_shown(cx));
@@ -285,10 +286,11 @@ impl Render for TitleBar {
             self.platform_titlebar.update(cx, |this, _| {
                 this.set_button_layout(button_layout);
                 this.set_children(
-                    self.application_menu
-                        .clone()
-                        .map(|menu| menu.into_any_element()),
-                );
+                        self.application_menu
+                            .clone()
+                            .filter(|_| show_application_menu)
+                            .map(|menu| menu.into_any_element()),
+                    );
             });
 
             let height = platform_title_bar_height(window);

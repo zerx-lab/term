@@ -468,6 +468,8 @@
     "show_user_picture": true,
     // Whether to show the user menu in the titlebar.
     "show_user_menu": true,
+    // Whether to show the application menu button (hamburger icon) in the title bar.
+    "show_application_menu": true,
     // Whether to show the sign in button in the titlebar.
     "show_sign_in": true,
     // Whether to show the menus in the titlebar.
