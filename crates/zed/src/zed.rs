@@ -959,7 +959,7 @@ fn register_actions(
                             .insert(f32::from(theme_settings::clamp_font_size(buffer_font_size)).into());
                     });
                 } else {
-                    theme_settings::adjust_buffer_font_size(cx, |size| size + px(1.0));
+                    theme_settings::increase_buffer_font_size(cx);
                 }
             }
         })
@@ -976,7 +976,7 @@ fn register_actions(
                             .insert(f32::from(theme_settings::clamp_font_size(buffer_font_size)).into());
                     });
                 } else {
-                    theme_settings::adjust_buffer_font_size(cx, |size| size - px(1.0));
+                    theme_settings::decrease_buffer_font_size(cx);
                 }
             }
         })
