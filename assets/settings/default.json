@@ -966,7 +966,7 @@
     //
     // Default: true
     "flexible": true,
-    // Where to position the sidebar. Can be 'left' or 'right'.
+    // Where to position the threads sidebar. Can be 'left' or 'right'.
     "sidebar_side": "left",
     // Default width when the agent panel is docked to the left or right.
     "default_width": 640,
@@ -1077,7 +1077,7 @@
           "terminal": true,
           "thinking": true,
           "update_plan": true,
-          "web_search": true,
+          "search_web": true,
         },
       },
       "ask": {
@@ -1097,7 +1097,7 @@
           "spawn_agent": true,
           "thinking": true,
           "update_plan": true,
-          "web_search": true,
+          "search_web": true,
         },
       },
       "minimal": {
