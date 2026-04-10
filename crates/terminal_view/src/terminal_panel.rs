@@ -841,6 +841,7 @@ impl TerminalPanel {
         self.add_terminal_shell_internal(false, cwd, reveal_strategy, window, cx)
     }
 
+    #[cfg(test)]
     fn add_local_terminal_shell(
         &mut self,
         reveal_strategy: RevealStrategy,

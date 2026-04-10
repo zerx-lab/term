@@ -1599,7 +1599,7 @@ impl Workspace {
                 project.clone(),
                 pane_history_timestamp.clone(),
                 None,
-                NewFile.boxed_clone(),
+                NewCenterTerminal::default().boxed_clone(),
                 true,
                 window,
                 cx,
@@ -4314,7 +4314,7 @@ impl Workspace {
                 self.project.clone(),
                 self.pane_history_timestamp.clone(),
                 None,
-                NewFile.boxed_clone(),
+                NewCenterTerminal::default().boxed_clone(),
                 true,
                 window,
                 cx,
@@ -5265,7 +5265,6 @@ impl Workspace {
                 cx.emit(Event::ItemRemoved {
                     item_id: item.item_id(),
                 });
-
             }
             pane::Event::Focus => {
                 window.invalidate_character_coordinates();
