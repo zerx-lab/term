@@ -34,10 +34,10 @@ use git_ui::git_panel::GitPanel;
 use git_ui::project_diff::{BranchDiffToolbar, ProjectDiffToolbar};
 use gpui::{
     Action, App, AppContext as _, AsyncWindowContext, ClipboardItem, Context, DismissEvent,
-    Element, Entity, FocusHandle, Focusable, Image, ImageFormat, KeyBinding, ParentElement,
-    PathPromptOptions, PromptLevel, ReadGlobal, SharedString, Size, Task, TitlebarOptions,
-    UpdateGlobal, WeakEntity, Window, WindowBounds, WindowHandle, WindowKind, WindowOptions,
-    actions, image_cache, img, point, px, retain_all,
+    Element, Entity, EntityId, FocusHandle, Focusable, Image, ImageFormat, KeyBinding,
+    ParentElement, PathPromptOptions, PromptLevel, ReadGlobal, SharedString, Size, Task,
+    TitlebarOptions, UpdateGlobal, WeakEntity, Window, WindowBounds, WindowHandle, WindowKind,
+    WindowOptions, actions, image_cache, img, point, px, retain_all,
 };
 use image_viewer::ImageInfo;
 use language::Capability;
@@ -72,7 +72,10 @@ use sidebar::Sidebar;
 
 use std::{
     borrow::Cow,
+    cell::RefCell,
+    collections::HashSet,
     path::{Path, PathBuf},
+    rc::Rc,
     sync::Arc,
     sync::atomic::{self, AtomicBool},
 };
@@ -433,10 +436,25 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
         let center_pane = workspace.active_pane().clone();
         initialize_pane(workspace, &center_pane, window, cx);
 
+        // Track terminal item ids so we can close the window when the last one is removed.
+        let terminal_item_ids = Rc::new(RefCell::new(HashSet::<EntityId>::new()));
+
         cx.subscribe_in(&workspace_handle, window, {
             move |workspace, _, event, window, cx| match event {
                 workspace::Event::PaneAdded(pane) => {
                     initialize_pane(workspace, pane, window, cx);
+                }
+                workspace::Event::ItemAdded { item } => {
+                    if item.downcast::<TerminalView>().is_some() {
+                        terminal_item_ids.borrow_mut().insert(item.item_id());
+                    }
+                }
+                workspace::Event::ItemRemoved { item_id } => {
+                    if terminal_item_ids.borrow_mut().remove(item_id) {
+                        if terminal_item_ids.borrow().is_empty() {
+                            window.dispatch_action(workspace::CloseWindow.boxed_clone(), cx);
+                        }
+                    }
                 }
                 workspace::Event::OpenBundledFile {
                     text,
@@ -1213,6 +1231,7 @@ fn initialize_pane(
     cx: &mut Context<Workspace>,
 ) {
     let workspace_handle = cx.weak_entity();
+
     pane.update(cx, |pane, cx| {
         pane.toolbar().update(cx, |toolbar, cx| {
             let multibuffer_hint = cx.new(|_| MultibufferHint::new());
@@ -5055,7 +5074,6 @@ mod tests {
                 "app_menu",
                 "assistant",
                 "assistant2",
-                "auto_update",
                 "branch_picker",
                 "bedrock",
                 "branches",

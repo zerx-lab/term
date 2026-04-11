@@ -347,25 +347,6 @@ fn general_page() -> SettingsPage {
         ]
     }
 
-    fn auto_update_section() -> [SettingsPageItem; 2] {
-        [
-            SettingsPageItem::SectionHeader("Auto Update"),
-            SettingsPageItem::SettingItem(SettingItem {
-                title: "Auto Update",
-                description: "Whether or not to automatically check for updates.",
-                field: Box::new(SettingField {
-                    json_path: Some("auto_update"),
-                    pick: |settings_content| settings_content.auto_update.as_ref(),
-                    write: |settings_content, value| {
-                        settings_content.auto_update = value;
-                    },
-                }),
-                metadata: None,
-                files: USER,
-            }),
-        ]
-    }
-
     SettingsPage {
         title: "General",
         items: concat_sections!(
@@ -374,7 +355,6 @@ fn general_page() -> SettingsPage {
             workspace_restoration_section(),
             scoped_settings_section(),
             privacy_section(),
-            auto_update_section(),
         ),
     }
 }

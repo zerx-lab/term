@@ -116,11 +116,6 @@ pub struct SettingsContent {
     /// Configuration of audio in Zed.
     pub audio: Option<AudioSettingsContent>,
 
-    /// Whether or not to automatically check for updates.
-    ///
-    /// Default: true
-    pub auto_update: Option<bool>,
-
     /// This base keymap settings adjusts the default keybindings in Zed to be similar
     /// to other common code editors. By default, Zed's keymap closely follows VSCode's
     /// keymap, with minor adjustments, this corresponds to the "VSCode" setting.

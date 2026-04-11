@@ -14,7 +14,6 @@ doctest = false
 
 [dependencies]
 anyhow.workspace = true
-auto_update.workspace = true
 editor.workspace = true
 extension_host.workspace = true
 fs.workspace = true
@@ -30,4 +29,3 @@ workspace.workspace = true
 
 [dev-dependencies]
 editor = { workspace = true, features = ["test-support"] }
-

@@ -102,7 +102,7 @@ function GenerateLicenses {
 function BuildZedAndItsFriends {
     Write-Output "Building Zterm and its friends, for channel: $channel"
     # Build zed.exe, cli.exe and auto_update_helper.exe
-    cargo build --release --package zed --package cli --package auto_update_helper --target $target
+    cargo build --release --package zed --package cli --target $target
     Copy-Item -Path ".\$CargoOutDir\zed.exe" -Destination "$innoDir\Zterm.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\cli.exe" -Destination "$innoDir\cli.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\auto_update_helper.exe" -Destination "$innoDir\auto_update_helper.exe" -Force
