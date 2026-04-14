@@ -693,7 +693,7 @@ impl TitleBar {
             .multi_workspace
             .as_ref()
             .and_then(|mw| mw.upgrade())
-            .map(|mw| mw.read(cx).project_group_keys().cloned().collect())
+            .map(|mw| mw.read(cx).project_group_keys())
             .unwrap_or_default();
 
         PopoverMenu::new("recent-projects-menu")
@@ -750,7 +750,7 @@ impl TitleBar {
             .multi_workspace
             .as_ref()
             .and_then(|mw| mw.upgrade())
-            .map(|mw| mw.read(cx).project_group_keys().cloned().collect())
+            .map(|mw| mw.read(cx).project_group_keys())
             .unwrap_or_default();
 
         PopoverMenu::new("sidebar-title-recent-projects-menu")
@@ -1057,7 +1057,9 @@ impl TitleBar {
                                     .w_full()
                                     .justify_between()
                                     .child(Label::new(user_login))
-                                    .child(PlanChip::new(plan.unwrap_or(Plan::ZedFree)))
+                                    .when(!has_organization, |parent| {
+                                        parent.child(PlanChip::new(plan.unwrap_or(Plan::ZedFree)))
+                                    })
                                     .into_any_element()
                             },
                             move |_, cx| {
