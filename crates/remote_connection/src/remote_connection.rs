@@ -1,17 +1,27 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::SystemTime,
+};
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use askpass::EncryptedPassword;
 use futures::{FutureExt as _, channel::oneshot, select};
 use gpui::{
     AnyWindowHandle, App, AsyncApp, DismissEvent, Entity, EventEmitter, Focusable, FontFeatures,
     ParentElement as _, Render, SharedString, Task, TextStyleRefinement, WeakEntity,
 };
+use http_client::{
+    HttpClient,
+    github::GithubRelease,
+};
 use markdown::{Markdown, MarkdownElement, MarkdownStyle};
 use release_channel::ReleaseChannel;
 use remote::{ConnectionIdentifier, RemoteClient, RemoteConnectionOptions, RemotePlatform};
 use semver::Version;
 use settings::Settings;
+use smol::fs::File;
 use theme_settings::ThemeSettings;
 use ui::{
     ActiveTheme, CommonAnimationExt, Context, InteractiveElement, KeyBinding, ListItem, Tooltip,
@@ -19,6 +29,121 @@ use ui::{
 };
 use ui_input::{ERASED_EDITOR_FACTORY, ErasedEditor};
 use workspace::{DismissDecision, ModalView, Workspace};
+
+const ZED_REPO: &str = "zed-industries/zed";
+const REMOTE_SERVER_CACHE_LIMIT: usize = 5;
+
+fn remote_server_asset_name(os: &str, arch: &str) -> String {
+    let extension = if os == "windows" { "zip" } else { "gz" };
+    format!("zed-remote-server-{os}-{arch}.{extension}")
+}
+
+async fn fetch_remote_server_release(
+    _version: Option<&Version>,
+    _release_channel: ReleaseChannel,
+    http: Arc<dyn HttpClient>,
+) -> Result<GithubRelease> {
+    http_client::github::latest_github_release(ZED_REPO, true, false, http)
+        .await
+        .context("fetching latest stable Zed release")
+}
+
+fn find_remote_server_asset_url(release: &GithubRelease, os: &str, arch: &str) -> Result<String> {
+    let asset_name = remote_server_asset_name(os, arch);
+    release
+        .assets
+        .iter()
+        .find(|a| a.name == asset_name)
+        .map(|a| a.browser_download_url.clone())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "release {} does not contain asset {asset_name}",
+                release.tag_name
+            )
+        })
+}
+
+async fn download_binary_to_path(
+    url: &str,
+    target_path: &Path,
+    http: Arc<dyn HttpClient>,
+) -> Result<()> {
+    let servers_dir = paths::remote_servers_dir();
+    std::fs::create_dir_all(servers_dir)?;
+    let temp = tempfile::Builder::new().tempfile_in(servers_dir)?;
+    let mut temp_file = File::create(temp.path()).await?;
+
+    let mut response = http.get(url, Default::default(), true).await?;
+    anyhow::ensure!(
+        response.status().is_success(),
+        "failed to download remote server binary: {}",
+        response.status()
+    );
+    smol::io::copy(response.body_mut(), &mut temp_file).await?;
+    smol::fs::rename(temp.path(), target_path).await?;
+
+    Ok(())
+}
+
+async fn cleanup_remote_server_cache(
+    platform_dir: &Path,
+    keep_path: &Path,
+    limit: usize,
+) -> Result<()> {
+    if limit == 0 {
+        return Ok(());
+    }
+
+    let mut entries = smol::fs::read_dir(platform_dir).await?;
+    let now = SystemTime::now();
+    let mut candidates = Vec::new();
+
+    use futures::StreamExt as _;
+    while let Some(entry) = entries.next().await {
+        let entry = entry?;
+        let path = entry.path();
+        let is_archive = path.extension() == Some(OsStr::new("gz"))
+            || path.extension() == Some(OsStr::new("zip"));
+        if !is_archive {
+            continue;
+        }
+
+        let mtime = if path == keep_path {
+            now
+        } else {
+            smol::fs::metadata(&path)
+                .await
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH)
+        };
+
+        candidates.push((path, mtime));
+    }
+
+    if candidates.len() <= limit {
+        return Ok(());
+    }
+
+    candidates.sort_by(|(path_a, time_a), (path_b, time_b)| {
+        time_b.cmp(time_a).then_with(|| path_a.cmp(path_b))
+    });
+
+    for (index, (path, _)) in candidates.into_iter().enumerate() {
+        if index < limit || path == keep_path {
+            continue;
+        }
+
+        if let Err(error) = smol::fs::remove_file(&path).await {
+            log::warn!(
+                "Failed to remove old remote server archive {:?}: {}",
+                path,
+                error
+            );
+        }
+    }
+
+    Ok(())
+}
 
 pub struct RemoteConnectionPrompt {
     connection_string: SharedString,
@@ -473,26 +598,87 @@ impl remote::RemoteClientDelegate for RemoteClientDelegate {
 
     fn download_server_binary_locally(
         &self,
-        _platform: RemotePlatform,
-        _release_channel: ReleaseChannel,
-        _version: Option<Version>,
-        _cx: &mut AsyncApp,
+        platform: RemotePlatform,
+        release_channel: ReleaseChannel,
+        version: Option<Version>,
+        cx: &mut AsyncApp,
     ) -> Task<anyhow::Result<PathBuf>> {
-        Task::ready(Err(anyhow::anyhow!(
-            "remote server auto-download not supported"
-        )))
+        let this = self.clone();
+        cx.spawn(async move |cx| {
+            let http: Arc<dyn HttpClient> = cx.update(|cx| cx.http_client());
+            let os = platform.os.as_str();
+            let arch = platform.arch.as_str();
+
+            this.set_status(Some("Fetching remote server release"), cx);
+            let release = fetch_remote_server_release(
+                version.as_ref(),
+                release_channel,
+                http.clone(),
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "Downloading remote server binary (version: {}, os: {os}, arch: {arch})",
+                    version
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "latest".to_string()),
+                )
+            })?;
+
+            let servers_dir = paths::remote_servers_dir();
+            let channel_dir = servers_dir.join(release_channel.dev_name());
+            let platform_dir = channel_dir.join(format!("{}-{}", os, arch));
+            let extension = if platform.os.is_windows() {
+                "zip"
+            } else {
+                "gz"
+            };
+            let version_path = platform_dir.join(format!("{}.{extension}", release.tag_name));
+            smol::fs::create_dir_all(&platform_dir).await?;
+
+            if smol::fs::metadata(&version_path).await.is_err() {
+                let url = find_remote_server_asset_url(&release, os, arch)?;
+                log::info!(
+                    "downloading zed-remote-server {os} {arch} version {}",
+                    release.tag_name
+                );
+                this.set_status(Some("Downloading remote server"), cx);
+                download_binary_to_path(&url, &version_path, http).await?;
+            }
+
+            if let Err(error) =
+                cleanup_remote_server_cache(&platform_dir, &version_path, REMOTE_SERVER_CACHE_LIMIT)
+                    .await
+            {
+                log::warn!(
+                    "Failed to clean up remote server cache in {:?}: {error:#}",
+                    platform_dir
+                );
+            }
+
+            Ok(version_path)
+        })
     }
 
     fn get_download_url(
         &self,
-        _platform: RemotePlatform,
-        _release_channel: ReleaseChannel,
-        _version: Option<Version>,
-        _cx: &mut AsyncApp,
+        platform: RemotePlatform,
+        release_channel: ReleaseChannel,
+        version: Option<Version>,
+        cx: &mut AsyncApp,
     ) -> Task<Result<Option<String>>> {
-        Task::ready(Err(anyhow::anyhow!(
-            "remote server auto-download not supported"
-        )))
+        cx.spawn(async move |cx| {
+            let http: Arc<dyn HttpClient> = cx.update(|cx| cx.http_client());
+            let release =
+                fetch_remote_server_release(version.as_ref(), release_channel, http).await?;
+            let url = find_remote_server_asset_url(
+                &release,
+                platform.os.as_str(),
+                platform.arch.as_str(),
+            )?;
+            Ok(Some(url))
+        })
     }
 }
 
@@ -611,26 +797,72 @@ impl remote::RemoteClientDelegate for BackgroundRemoteClientDelegate {
 
     fn download_server_binary_locally(
         &self,
-        _platform: RemotePlatform,
-        _release_channel: ReleaseChannel,
-        _version: Option<Version>,
-        _cx: &mut AsyncApp,
+        platform: RemotePlatform,
+        release_channel: ReleaseChannel,
+        version: Option<Version>,
+        cx: &mut AsyncApp,
     ) -> Task<anyhow::Result<PathBuf>> {
-        Task::ready(Err(anyhow::anyhow!(
-            "remote server auto-download not supported"
-        )))
+        cx.spawn(async move |cx| {
+            let http: Arc<dyn HttpClient> = cx.update(|cx| cx.http_client());
+            let os = platform.os.as_str();
+            let arch = platform.arch.as_str();
+
+            let release =
+                fetch_remote_server_release(version.as_ref(), release_channel, http.clone())
+                    .await?;
+
+            let servers_dir = paths::remote_servers_dir();
+            let channel_dir = servers_dir.join(release_channel.dev_name());
+            let platform_dir = channel_dir.join(format!("{}-{}", os, arch));
+            let extension = if platform.os.is_windows() {
+                "zip"
+            } else {
+                "gz"
+            };
+            let version_path = platform_dir.join(format!("{}.{extension}", release.tag_name));
+            smol::fs::create_dir_all(&platform_dir).await?;
+
+            if smol::fs::metadata(&version_path).await.is_err() {
+                let url = find_remote_server_asset_url(&release, os, arch)?;
+                log::info!(
+                    "downloading zed-remote-server {os} {arch} version {} (background)",
+                    release.tag_name
+                );
+                download_binary_to_path(&url, &version_path, http).await?;
+            }
+
+            if let Err(error) =
+                cleanup_remote_server_cache(&platform_dir, &version_path, REMOTE_SERVER_CACHE_LIMIT)
+                    .await
+            {
+                log::warn!(
+                    "Failed to clean up remote server cache in {:?}: {error:#}",
+                    platform_dir
+                );
+            }
+
+            Ok(version_path)
+        })
     }
 
     fn get_download_url(
         &self,
-        _platform: RemotePlatform,
-        _release_channel: ReleaseChannel,
-        _version: Option<Version>,
-        _cx: &mut AsyncApp,
+        platform: RemotePlatform,
+        release_channel: ReleaseChannel,
+        version: Option<Version>,
+        cx: &mut AsyncApp,
     ) -> Task<Result<Option<String>>> {
-        Task::ready(Err(anyhow::anyhow!(
-            "remote server auto-download not supported"
-        )))
+        cx.spawn(async move |cx| {
+            let http: Arc<dyn HttpClient> = cx.update(|cx| cx.http_client());
+            let release =
+                fetch_remote_server_release(version.as_ref(), release_channel, http).await?;
+            let url = find_remote_server_asset_url(
+                &release,
+                platform.os.as_str(),
+                platform.arch.as_str(),
+            )?;
+            Ok(Some(url))
+        })
     }
 }
 
@@ -669,5 +901,3 @@ pub fn connect(
             .await
     })
 }
-
-use anyhow::Context as _;

@@ -207,7 +207,10 @@ impl WslRemoteConnection {
             binary_exists_on_server,
             cx,
         )
-        .await?
+        .await
+        .inspect_err(|e| log::warn!("Failed to build remote server from source: {e:#}"))
+        .ok()
+        .flatten()
         {
             let tmp_path = paths::remote_server_dir_relative().join(
                 &RelPath::unix(&format!(
