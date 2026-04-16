@@ -79,7 +79,10 @@ pub(crate) use model_selector::ModelSelector;
 pub(crate) use model_selector_popover::ModelSelectorPopover;
 pub(crate) use thread_history::ThreadHistory;
 pub(crate) use thread_history_view::*;
-pub use thread_import::{AcpThreadImportOnboarding, ThreadImportModal};
+pub use thread_import::{
+    AcpThreadImportOnboarding, CrossChannelImportOnboarding, ThreadImportModal,
+    channels_with_threads, import_threads_from_other_channels,
+};
 use zed_actions;
 
 pub const DEFAULT_THREAD_TITLE: &str = "New Agent Thread";
@@ -195,6 +198,8 @@ actions!(
         ScrollOutputToPreviousMessage,
         /// Scroll the output to the next user message.
         ScrollOutputToNextMessage,
+        /// Import agent threads from other Zed release channels (e.g. Preview, Nightly).
+        ImportThreadsFromOtherChannels,
     ]
 );
 
@@ -259,6 +264,7 @@ pub struct NewNativeAgentThreadFromSummary {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum Agent {
     #[default]
     #[serde(alias = "NativeAgent", alias = "TextThread")]
@@ -268,6 +274,8 @@ pub enum Agent {
         #[serde(rename = "name")]
         id: AgentId,
     },
+    #[cfg(any(test, feature = "test-support"))]
+    Stub,
 }
 
 impl From<AgentId> for Agent {
@@ -285,6 +293,8 @@ impl Agent {
         match self {
             Self::NativeAgent => agent::ZED_AGENT_ID.clone(),
             Self::Custom { id } => id.clone(),
+            #[cfg(any(test, feature = "test-support"))]
+            Self::Stub => "stub".into(),
         }
     }
 
@@ -296,6 +306,8 @@ impl Agent {
         match self {
             Self::NativeAgent => "Zed Agent".into(),
             Self::Custom { id, .. } => id.0.clone(),
+            #[cfg(any(test, feature = "test-support"))]
+            Self::Stub => "Stub Agent".into(),
         }
     }
 
@@ -303,6 +315,8 @@ impl Agent {
         match self {
             Self::NativeAgent => None,
             Self::Custom { .. } => Some(IconName::Sparkle),
+            #[cfg(any(test, feature = "test-support"))]
+            Self::Stub => None,
         }
     }
 
@@ -316,6 +330,8 @@ impl Agent {
             Self::Custom { id: name } => {
                 Rc::new(agent_servers::CustomAgentServer::new(name.clone()))
             }
+            #[cfg(any(test, feature = "test-support"))]
+            Self::Stub => Rc::new(crate::test_support::StubAgentServer::default_response()),
         }
     }
 }
@@ -500,6 +516,17 @@ pub fn init(
     })
     .detach();
     cx.observe_new(ManageProfilesModal::register).detach();
+    cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
+        workspace.register_action(
+            |workspace: &mut Workspace,
+             _: &ImportThreadsFromOtherChannels,
+             _window: &mut Window,
+             cx: &mut Context<Workspace>| {
+                import_threads_from_other_channels(workspace, cx);
+            },
+        );
+    })
+    .detach();
 
     // Update command palette filter based on AI settings
     update_command_palette_filter(cx);
