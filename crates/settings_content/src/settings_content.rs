@@ -165,6 +165,8 @@ pub struct SettingsContent {
 
     pub project_panel: Option<ProjectPanelSettingsContent>,
 
+    pub ssh_panel: Option<SshPanelSettingsContent>,
+
     /// Configuration for the Message Editor
     pub message_editor: Option<MessageEditorSettings>,
 
@@ -917,6 +919,24 @@ pub struct OutlinePanelSettingsContent {
     ///
     /// Default: 100
     pub expand_outlines_with_depth: Option<usize>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, PartialEq)]
+pub struct SshPanelSettingsContent {
+    /// Whether to show the SSH panel button in the status bar.
+    ///
+    /// Default: true
+    pub button: Option<bool>,
+    /// Customize default width (in pixels) taken by SSH panel
+    ///
+    /// Default: 240
+    #[serde(serialize_with = "crate::serialize_optional_f32_with_two_decimal_places")]
+    pub default_width: Option<f32>,
+    /// The position of SSH panel
+    ///
+    /// Default: left
+    pub dock: Option<DockSide>,
 }
 
 #[derive(

@@ -682,6 +682,17 @@ pub mod debug_panel {
     );
 }
 
+pub mod ssh_panel {
+    use gpui::actions;
+    actions!(
+        ssh_panel,
+        [
+            /// Toggles focus on the SSH panel.
+            ToggleFocus
+        ]
+    );
+}
+
 actions!(
     debugger,
     [

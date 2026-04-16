@@ -16586,6 +16586,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "ssh_panel"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "collections",
+ "editor",
+ "fs",
+ "futures 0.3.32",
+ "gpui",
+ "log",
+ "menu",
+ "paths",
+ "recent_projects",
+ "remote",
+ "serde",
+ "settings",
+ "theme",
+ "ui",
+ "util",
+ "workspace",
+ "zed_actions",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -22191,6 +22215,7 @@ dependencies = [
  "smol",
  "snippet_provider",
  "snippets_ui",
+ "ssh_panel",
  "svg_preview",
  "sysinfo 0.37.2",
  "system_specs",

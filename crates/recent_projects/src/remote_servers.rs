@@ -382,7 +382,7 @@ impl Focusable for ProjectPicker {
 impl ProjectPicker {
     fn new(
         create_new_window: bool,
-        index: ServerIndex,
+        index: Option<ServerIndex>,
         connection: RemoteConnectionOptions,
         project: Entity<Project>,
         home_dir: RemotePathBuf,
@@ -455,38 +455,38 @@ impl ProjectPicker {
                     let (paths, paths_with_positions) =
                         determine_paths_with_positions(&remote_connection, paths).await;
 
-                    cx.update(|_, cx| {
-                        let fs = app_state.fs.clone();
-                        update_settings_file(fs, cx, {
-                            let paths = paths
-                                .iter()
-                                .map(|path| path.to_string_lossy().into_owned())
-                                .collect();
-                            move |settings, _| match index {
-                                ServerIndex::Ssh(index) => {
-                                    if let Some(server) = settings
-                                        .remote
-                                        .ssh_connections
-                                        .as_mut()
-                                        .and_then(|connections| connections.get_mut(index.0))
-                                    {
-                                        server.projects.insert(RemoteProject { paths });
-                                    };
+                    if let Some(index) = index {
+                        cx.update(|_, cx| {
+                            let fs = app_state.fs.clone();
+                            update_settings_file(fs, cx, {
+                                let paths = paths
+                                    .iter()
+                                    .map(|path| path.to_string_lossy().into_owned())
+                                    .collect();
+                                move |settings, _| match index {
+                                    ServerIndex::Ssh(index) => {
+                                        if let Some(server) =
+                                            settings.remote.ssh_connections.as_mut().and_then(
+                                                |connections| connections.get_mut(index.0),
+                                            )
+                                        {
+                                            server.projects.insert(RemoteProject { paths });
+                                        };
+                                    }
+                                    ServerIndex::Wsl(index) => {
+                                        if let Some(server) =
+                                            settings.remote.wsl_connections.as_mut().and_then(
+                                                |connections| connections.get_mut(index.0),
+                                            )
+                                        {
+                                            server.projects.insert(RemoteProject { paths });
+                                        };
+                                    }
                                 }
-                                ServerIndex::Wsl(index) => {
-                                    if let Some(server) = settings
-                                        .remote
-                                        .wsl_connections
-                                        .as_mut()
-                                        .and_then(|connections| connections.get_mut(index.0))
-                                    {
-                                        server.projects.insert(RemoteProject { paths });
-                                    };
-                                }
-                            }
-                        });
-                    })
-                    .log_err();
+                            });
+                        })
+                        .log_err();
+                    }
 
                     let window = if create_new_window {
                         let options = cx
@@ -591,7 +591,13 @@ impl gpui::Render for ProjectPicker {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct SshServerIndex(usize);
+pub struct SshServerIndex(pub usize);
+
+impl SshServerIndex {
+    pub fn new(index: usize) -> Self {
+        Self(index)
+    }
+}
 impl std::fmt::Display for SshServerIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
@@ -930,7 +936,7 @@ impl RemoteServerProjects {
 
     fn project_picker(
         create_new_window: bool,
-        index: ServerIndex,
+        index: Option<ServerIndex>,
         connection_options: remote::RemoteConnectionOptions,
         project: Entity<Project>,
         home_dir: RemotePathBuf,
@@ -952,6 +958,67 @@ impl RemoteServerProjects {
         ));
         cx.notify();
 
+        this
+    }
+
+    /// Creates a `RemoteServerProjects` modal that immediately starts connecting
+    /// to the given SSH server and, on success, opens a project picker.
+    ///
+    /// `server_index` is the index into `remote.ssh_connections` in settings.
+    /// When `Some`, the chosen project path will be persisted under that server
+    /// entry. When `None` (e.g. for hosts coming from `~/.ssh/config` that are
+    /// not yet in settings), the connection still works but the path is not saved.
+    pub fn connect_to_ssh_server(
+        server_index: Option<SshServerIndex>,
+        connection_options: SshConnectionOptions,
+        create_new_window: bool,
+        fs: Arc<dyn Fs>,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let this = Self::new_inner(
+            Mode::default_mode(&BTreeSet::new(), cx),
+            create_new_window,
+            fs,
+            window,
+            workspace.clone(),
+            cx,
+        );
+        let index = server_index.map(ServerIndex::Ssh);
+        let connection_options = RemoteConnectionOptions::Ssh(connection_options);
+        cx.defer_in(window, move |this, window, cx| {
+            this.create_remote_project(index, connection_options, window, cx);
+        });
+        this
+    }
+
+    /// Creates a `RemoteServerProjects` modal that opens directly in the
+    /// "View Server Options" mode for the given SSH server, allowing the user
+    /// to edit nickname, copy address, or remove the server.
+    pub fn view_ssh_server_options(
+        server_index: SshServerIndex,
+        connection_options: SshConnectionOptions,
+        fs: Arc<dyn Fs>,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut this = Self::new_inner(
+            Mode::default_mode(&BTreeSet::new(), cx),
+            false,
+            fs,
+            window,
+            workspace,
+            cx,
+        );
+        this.mode = Mode::ViewServerOptions(ViewServerOptionsState::Ssh {
+            connection: connection_options,
+            server_index,
+            entries: std::array::from_fn(|_| NavigableEntry::focusable(cx)),
+        });
+        this.focus_handle(cx).focus(window, cx);
+        cx.notify();
         this
     }
 
@@ -1156,7 +1223,7 @@ impl RemoteServerProjects {
 
     fn create_remote_project(
         &mut self,
-        index: ServerIndex,
+        index: Option<ServerIndex>,
         connection_options: RemoteConnectionOptions,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1414,7 +1481,7 @@ impl RemoteServerProjects {
                                     let connection = connection.clone();
                                     move |this, _: &menu::Confirm, window, cx| {
                                         this.create_remote_project(
-                                            index,
+                                            Some(index),
                                             connection.clone().into(),
                                             window,
                                             cx,
@@ -1434,7 +1501,7 @@ impl RemoteServerProjects {
                                             let connection = connection.clone();
                                             move |this, _, window, cx| {
                                                 this.create_remote_project(
-                                                    index,
+                                                    Some(index),
                                                     connection.clone().into(),
                                                     window,
                                                     cx,
@@ -1493,7 +1560,7 @@ impl RemoteServerProjects {
                             move |this, _: &menu::Confirm, window, cx| {
                                 let new_ix = this.create_host_from_ssh_config(&host, cx);
                                 this.create_remote_project(
-                                    new_ix.into(),
+                                    Some(new_ix.into()),
                                     connection.clone().into(),
                                     window,
                                     cx,
@@ -1512,7 +1579,7 @@ impl RemoteServerProjects {
                                     move |this, _, window, cx| {
                                         let new_ix = this.create_host_from_ssh_config(&host, cx);
                                         this.create_remote_project(
-                                            new_ix.into(),
+                                            Some(new_ix.into()),
                                             connection.clone().into(),
                                             window,
                                             cx,

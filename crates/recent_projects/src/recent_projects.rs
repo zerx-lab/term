@@ -34,7 +34,7 @@ use picker::{
 };
 use project::{Worktree, git_store::Repository};
 pub use remote_connections::RemoteSettings;
-pub use remote_servers::RemoteServerProjects;
+pub use remote_servers::{RemoteServerProjects, SshServerIndex};
 use settings::{Settings, WorktreeId};
 use ui_input::ErasedEditor;
 use workspace::ProjectGroupKey;
