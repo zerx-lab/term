@@ -12,8 +12,8 @@ use db::kvp::KeyValueStore;
 use futures::{channel::oneshot, future::join_all};
 use gpui::{
     Action, AnyView, App, AsyncApp, AsyncWindowContext, Context, Corner, Entity, EventEmitter,
-    FocusHandle, Focusable, IntoElement, ParentElement, Pixels, Render, Styled, Task, WeakEntity,
-    Window, actions,
+    FocusHandle, Focusable, IntoElement, ParentElement, Pixels, Render, Styled, Subscription, Task,
+    WeakEntity, Window, actions,
 };
 use itertools::Itertools;
 use project::{Fs, Project};
@@ -86,6 +86,7 @@ pub struct TerminalPanel {
     assistant_enabled: bool,
     assistant_tab_bar_button: Option<AnyView>,
     active: bool,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl TerminalPanel {
@@ -93,6 +94,12 @@ impl TerminalPanel {
         let project = workspace.project();
         let pane = new_terminal_pane(workspace.weak_handle(), project.clone(), false, window, cx);
         let center = PaneGroup::new(pane.clone());
+        let project_subscription =
+            cx.subscribe_in(project, window, |this, _, event, window, cx| {
+                if let project::Event::WorktreeAdded(_) = event {
+                    this.on_project_worktree_added(window, cx);
+                }
+            });
         let terminal_panel = Self {
             center,
             active_pane: pane,
@@ -104,6 +111,7 @@ impl TerminalPanel {
             assistant_enabled: false,
             assistant_tab_bar_button: None,
             active: false,
+            _subscriptions: vec![project_subscription],
         };
         terminal_panel.apply_tab_bar_buttons(&terminal_panel.active_pane, cx);
         terminal_panel
@@ -1085,6 +1093,34 @@ impl TerminalPanel {
         self.active_pane.read(cx).items_len() == 0 && self.pending_terminals_to_add == 0
     }
 
+    fn is_remote_project_without_worktrees(&self, cx: &App) -> bool {
+        self.workspace
+            .read_with(cx, |workspace, cx| {
+                let project = workspace.project().read(cx);
+                project.is_via_remote_server() && workspace.worktrees(cx).next().is_none()
+            })
+            .unwrap_or(false)
+    }
+
+    fn on_project_worktree_added(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.active || !self.has_no_terminals(cx) {
+            return;
+        }
+        cx.defer_in(window, |this, window, cx| {
+            if !this.active || !this.has_no_terminals(cx) {
+                return;
+            }
+            let Ok(kind) = this
+                .workspace
+                .update(cx, |workspace, cx| default_working_directory(workspace, cx))
+            else {
+                return;
+            };
+            this.add_terminal_shell(kind, RevealStrategy::Always, window, cx)
+                .detach_and_log_err(cx);
+        });
+    }
+
     pub fn assistant_enabled(&self) -> bool {
         self.assistant_enabled
     }
@@ -1594,6 +1630,9 @@ impl Panel for TerminalPanel {
         let old_active = self.active;
         self.active = active;
         if !active || old_active == active || !self.has_no_terminals(cx) {
+            return;
+        }
+        if self.is_remote_project_without_worktrees(cx) {
             return;
         }
         cx.defer_in(window, |this, window, cx| {

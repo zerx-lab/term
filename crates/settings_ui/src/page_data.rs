@@ -37,7 +37,7 @@ macro_rules! concat_sections {
             out.extend($arr);
         )+
 
-        out
+        out.into()
     }};
 
     ($($arr:expr),+ $(,)?) => {{

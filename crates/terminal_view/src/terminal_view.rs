@@ -52,8 +52,8 @@ use ui::{
 };
 use util::ResultExt;
 use workspace::{
-    CloseActiveItem, DraggedSelection, DraggedTab, NewCenterTerminal, Pane, ToolbarItemLocation,
-    Workspace, WorkspaceId, delete_unloaded_items,
+    CloseActiveItem, DraggedSelection, DraggedTab, NewCenterTerminal, NewTerminal, Pane,
+    ToolbarItemLocation, Workspace, WorkspaceId, delete_unloaded_items,
     item::{
         HighlightedText, Item, ItemEvent, SerializableItem, TabContentParams, TabTooltipContent,
     },
@@ -1973,6 +1973,7 @@ impl SearchableItem for TerminalView {
 /// Gets the working directory for the given workspace, respecting the user's settings.
 /// Falls back to home directory when no project directory is available.
 pub fn default_working_directory(workspace: &Workspace, cx: &App) -> Option<PathBuf> {
+    let is_remote = workspace.project().read(cx).remote_client().is_some();
     let directory = match &TerminalSettings::get_global(cx).working_directory {
         WorkingDirectory::CurrentFileDirectory => workspace
             .project()
@@ -1987,7 +1988,11 @@ pub fn default_working_directory(workspace: &Workspace, cx: &App) -> Option<Path
             .map(|dir| Path::new(&dir.to_string()).to_path_buf())
             .filter(|dir| dir.is_dir()),
     };
-    directory.or_else(dirs::home_dir)
+    if is_remote {
+        directory
+    } else {
+        directory.or_else(dirs::home_dir)
+    }
 }
 
 fn current_project_directory(workspace: &Workspace, cx: &App) -> Option<PathBuf> {
